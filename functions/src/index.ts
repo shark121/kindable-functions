@@ -1,7 +1,8 @@
 import { FieldValue, getFirestore } from "firebase-admin/firestore"; // Import Firestore from Firebase Admin SDK
 import { onDocumentWritten } from "firebase-functions/firestore";
 import { initializeApp } from "firebase-admin/app";
-import { DonationSchemaType, FundraiserSchemaType } from "../src/lib/types";
+import { DonationSchemaType, FundraiserSchemaType } from "./lib/types";
+import { isoToYYYYMMDD } from "./lib/helpers";
 
 const app = initializeApp();
 
@@ -27,8 +28,6 @@ export const donationsCreate = onDocumentWritten(
         const Donation = Object.values(
           snapshot.data?.after.data() as Record<string, DonationSchemaType>
         ).slice(-1)[0];
-
-       
 
         const createdAmount = Donation.amount;
         const fundraiserId = Donation.fundraiserID;
@@ -58,13 +57,29 @@ export const donationsCreate = onDocumentWritten(
           raisedAmount: FieldValue.increment(createdAmount),
         });
 
+        const statiticsCollectionRef = db.collection("statistics");
+        const statisticsDocRef = statiticsCollectionRef.doc(creatorId);
+        const dateId = isoToYYYYMMDD(Donation.createdAt);
+
+        await statisticsDocRef.set(
+          {
+            [dateId]: {
+              donations: FieldValue.increment(1),
+              amount: FieldValue.increment(createdAmount),
+              donation: FieldValue.arrayUnion({
+                donationId: Donation.id,
+                amount: createdAmount,
+                fundraiserId,
+                donorId: Donation.donorId,                
+              }),
+              dateId,
+            },
+          },
+          { merge: true }
+        );
+
         console.log(`User ${creatorId} document updated successfully.`);
       }
-      // if (auth) {
-      //   console.log("User UID:", auth);
-      // } else {
-      //   console.log("Unauthenticated request");
-      // }
     } catch (error) {
       console.error("Error in donationsCreate:", error);
     }
